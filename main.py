@@ -1,126 +1,140 @@
-import sys
+# single_script.py
+# 全自动：抓集数 → 抓 m3u8 → 下载 ts → 合成 mp4
+
+from playwright.sync_api import sync_playwright
+import json
 import os
-import requests
-from lxml import etree
-from multiprocessing import Pool, cpu_count
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QPushButton,
-    QTextEdit, QLineEdit, QLabel
-)
-from PyQt5.QtCore import Qt
-import yt_dlp
+import subprocess
+import time
 
 
-# -----------------------------
-# 页面解析：获取 m3u8 链接
-# -----------------------------
-def fetch_m3u8_from_page(url):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    html = requests.get(url, headers=headers).text
-    tree = etree.HTML(html)
+# ============================================================
+# 1) 获取当前剧集下所有集数的播放链接
+# ============================================================
+def find_all_episodes(url: str):
+    print(f"\n⏳ 正在获取集数列表：{url}")
 
-    # 你自己给的 playlist xpath
-    lis = tree.xpath('//*[@id="playlist"]/li/a')
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page()
+        page.goto(url)
 
-    result = []
-    for a in lis:
-        href = a.get("href")
-        if href:
-            if not href.startswith("http"):
-                href = "https://xiaoxintv.cc" + href
-            result.append(href)
+        page.wait_for_selector("#playlist")
 
-    return result
+        li_elements = page.query_selector_all('//*[@id="playlist"]/li')
 
+        episode_map = {}
 
-# -----------------------------
-# yt-dlp 下载一个 m3u8
-# -----------------------------
-def download_m3u8(m3u8_url):
-    out_dir = "downloads"
-    os.makedirs(out_dir, exist_ok=True)
+        for li in li_elements:
+            a = li.query_selector("a")
+            if a:
+                name = a.inner_text().strip()
+                href = a.get_attribute("href")
+                episode_map[name] = href
 
-    ydl_opts = {
-        "outtmpl": out_dir + "/%(title)s.%(ext)s",
-        "merge_output_format": "mp4",
-        "concurrent_fragment_downloads": 10,
-        "continue": True,     # 断点续传
-        "n_threads": 4,
-        "quiet": True,
-        "no_warnings": True,
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([m3u8_url])
-
-    return f"完成：{m3u8_url}"
+        print(f"📌 找到 {len(episode_map)} 集")
+        browser.close()
+        return episode_map
 
 
-# -----------------------------
-# GUI 主窗口
-# -----------------------------
-class MainGUI(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("M3U8 批量下载器（多进程 + 断点续传）")
-        self.resize(600, 400)
+# ============================================================
+# 2) 自动监听网络请求，获取 m3u8 链接
+# ============================================================
+def fetch_m3u8(url: str):
+    print(f"\n🎬 正在抓取 m3u8：{url}")
 
-        layout = QVBoxLayout()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
 
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("输入播放页面地址，例如：https://xiaoxintv.cc/index.php/vod/play/id/205584/sid/1/nid/1.html")
-        layout.addWidget(self.url_input)
+        m3u8_links = []
 
-        self.btn_start = QPushButton("抓取并下载")
-        self.btn_start.clicked.connect(self.start_task)
-        layout.addWidget(self.btn_start)
+        def on_request(req):
+            req_url = req.url
+            if ".m3u8" in req_url:
+                print("🎯 捕获到 M3U8：", req_url)
+                m3u8_links.append(req_url)
 
-        self.log_output = QTextEdit()
-        self.log_output.setReadOnly(True)
-        layout.addWidget(self.log_output)
+        page.on("request", on_request)
+        page.goto(url, timeout=30000)
+        time.sleep(5)
 
-        self.setLayout(layout)
+        browser.close()
 
-    def log(self, text):
-        self.log_output.append(text)
-        self.log_output.ensureCursorVisible()
+    if m3u8_links:
+        return list(set(m3u8_links))
 
-    def start_task(self):
-        url = self.url_input.text().strip()
-        if not url:
-            self.log("❌ 请输入地址！")
-            return
+    print("❌ 未找到 m3u8")
+    return []
 
-        self.log("🔍 正在解析页面...")
-        try:
-            m3u8_list = fetch_m3u8_from_page(url)
-        except Exception as e:
-            self.log("❌ 页面解析失败：" + str(e))
-            return
 
-        self.log(f"🔗 共解析到 {len(m3u8_list)} 个播放链接")
+# ============================================================
+# 3) 调用 yt-dlp 下载并转 MP4
+# ============================================================
+def download_m3u8(m3u8_url, out_path):
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    mp4_file = out_path + ".mp4"
 
+    print(f"\n⬇️ 下载中：{mp4_file}")
+
+    cmd = [
+        "yt-dlp",
+        "-N", "16",
+        "-o", mp4_file,
+        m3u8_url
+    ]
+
+    subprocess.run(cmd)
+    print(f"✅ 下载完成：{mp4_file}")
+
+
+# ============================================================
+# 4) 主流程：一键自动化
+# ============================================================
+def main():
+    # ------------------------------
+    # 配置区
+    # ------------------------------
+    start_url = "https://xiaoxintv.cc/index.php/vod/play/id/205584/sid/1/nid/1.html"
+    base = "https://xiaoxintv.cc/"
+    save_dir = r"E:\video\生活大爆炸 第五季\\"
+    json_name = "生活大爆炸_第五季_m3u8.json"
+    # ------------------------------
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    # ① 获取所有集
+    episode_map = find_all_episodes(start_url)
+
+    all_m3u8 = {}
+
+    # ② 循环处理每一集
+    for ep_name, ep_href in episode_map.items():
+        play_url = base + ep_href
+        print(f"\n=========== 正在处理 {ep_name} ===========")
+        print("播放地址：", play_url)
+
+        # 抓 m3u8
+        m3u8_list = fetch_m3u8(play_url)
         if not m3u8_list:
-            self.log("❌ 没有找到任何 m3u8 链接")
-            return
+            print("⚠️ 跳过本集（无 m3u8）")
+            continue
 
-        self.log("🚀 开始多进程下载...")
+        # 一般是第二个，但以第一个为主文件
+        m3u8_url = m3u8_list[0]
+        all_m3u8[ep_name] = m3u8_url
 
-        pool = Pool(cpu_count())
-        for m3u8_url in m3u8_list:
-            pool.apply_async(download_m3u8, args=(m3u8_url,), callback=self.log)
+        # 下载
+        out_path = os.path.join(save_dir, ep_name)
+        download_m3u8(m3u8_url, out_path)
 
-        pool.close()
-        pool.join()
+    # ③ 保存 m3u8 汇总
+    json_path = os.path.join(save_dir, json_name)
+    json.dump(all_m3u8, open(json_path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
 
-        self.log("🎉 全部下载完成！")
+    print("\n================ DONE! 所有任务完成！ ================")
+    print("m3u8 文件记录：", json_path)
 
 
-# -----------------------------
-# 入口
-# -----------------------------
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    gui = MainGUI()
-    gui.show()
-    sys.exit(app.exec_())
+    main()
