@@ -10,8 +10,12 @@ from playwright.sync_api import sync_playwright
 # ============================================
 def find_page(url):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        browser = p.chromium.launch(headless=False)  # 必须为 False 才能过验证
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
         page.goto(url)
 
         page.wait_for_selector("#playlist")
@@ -88,15 +92,8 @@ def parallel_download(m3u8_map, save_dir):
     with Pool(workers) as pool:
         pool.map(download_one, tasks)
 
-
-# ============================================
-# 4. 主函数：全集自动化
-# ============================================
-if __name__ == "__main__":
-    root_page = "https://xiaoxintv.cc/index.php/vod/play/id/205584/sid/1/nid/1.html"
-    base_url = "https://xiaoxintv.cc/"
-    save_dir = r"E:\video\生活大爆炸 第五季"
-
+def download_main(save_dir,base_url,root_page,base_name):
+    save_dir = save_dir +"\\"+ base_name
     os.makedirs(save_dir, exist_ok=True)
 
     print("🔍 获取剧集列表...")
@@ -116,9 +113,10 @@ if __name__ == "__main__":
             continue
 
         # 只取第一个
-        all_m3u8[ep_name] = m3u8_list[0]
-
-        print(f"🎯 {ep_name} → {m3u8_list[0]}")
+        for strs in m3u8_list:
+            if strs.endswith(".m3u8"):
+                all_m3u8[ep_name] = strs
+                print(f"🎯 {ep_name} → {strs}")
 
     # 保存 JSON
     json_path = os.path.join(save_dir, "m3u8_list.json")
@@ -130,3 +128,35 @@ if __name__ == "__main__":
     parallel_download(all_m3u8, save_dir)
 
     print("\n================ 全部完成！ ================")
+
+    pass
+
+# ============================================
+# 4. 主函数：全集自动化
+# ============================================
+if __name__ == "__main__":
+    base_url = "https://xiaoxintv.cc/"
+    base_name = "生活大爆炸"
+    save_dir = "E:\\video\\"
+    os.makedirs(save_dir, exist_ok=True)
+    save_dir = save_dir + base_name
+    os.makedirs(save_dir, exist_ok=True)
+    all_pages = {}
+    num = 205590
+    all_num = 12
+
+    root_page = "https://xiaoxintv.cc/index.php/vod/play/id/{num}/sid/1/nid/1.html"
+
+    for index in range(1, all_num + 1):
+        url = root_page.format(num=num)
+        all_pages[f"{base_name} 第{index}季"] = url
+        num -= 1  # <-- 自减
+
+    # 输出结果检查
+    for key, url in all_pages.items():
+        print("key:", key, "\turl:", url)
+        download_main(save_dir, base_url,url, key)
+
+
+
+
