@@ -1,108 +1,134 @@
-# M3U8 批量下载器（Python + 多进程 + GUI + 断点续传）
+# M3U8 视频批量下载器
 
-本项目是一个 **全自动 M3U8 下载器**，支持：
+本项目是一个全自动 M3U8 视频下载工具，专为从特定网站批量下载电视剧集而设计。它能够自动解析网页、抓取播放列表、提取 m3u8 地址，并使用 `yt-dlp` 完整处理下载和转换过程。
 
-- ✔ 自动解析网页播放页  
-- ✔ 自动抓取播放列表（`ul#playlist`）  
-- ✔ 自动提取每集 m3u8  
-- ✔ 使用 `yt-dlp` 完整处理：m3u8 → ts → mp4  
-- ✔ **多进程加速下载**  
-- ✔ **断点续传（跳过已下载 mp4）**  
-- ✔ **PyQt5 GUI 界面**  
-- ✔ 可一键打包成 Windows EXE  
-- ✔ 适用于 Python 3.14+
+## 🎯 主要特性
 
----
+- ✔ 自动解析网页播放页
+- ✔ 自动抓取播放列表（`ul#playlist`）
+- ✔ 自动提取每集 m3u8 地址
+- ✔ 使用 `yt-dlp` 完整处理：m3u8 → ts → mp4
+- ✔ 多进程加速下载
+- ✔ 断点续传（跳过已下载的 mp4）
+- ✔ 支持代理池绕过反爬机制
+- ✔ 可一键打包成 Windows EXE
+- ✔ 适用于 Python 3.7+
 
-## 🚀 功能特点
+## 📁 项目结构
 
-### 🔍 自动解析网页
-输入播放页面，例如：
+```
+.
+├── main.py                     # 基础版本下载器
+├── multiprocessing_main.py     # 多进程版本下载器
+├── multiprocessing_main_2.0.py # 增强版多进程下载器
+├── tv_spider_enhanced.py       # 带代理池的增强版下载器
+├── sc/                         # 模块化版本
+│   ├── downloads.py
+│   ├── findhtml.py
+│   ├── get_m3u8.py
+│   └── sc_main.py
+└── README.md                   # 项目说明文档
+```
 
+## 🚀 功能详解
+
+### 🔍 自动解析网页播放列表
+
+程序可以自动解析指定网站的播放页面，例如：
+
+```
 https://xiaoxintv.cc/index.php/vod/play/id/205584/sid/1/nid/1.html
-
+```
 
 脚本会自动抓取：
 
 - XPath：`//*[@id="playlist"]/li/a`
-- 获取所有 ep 的链接
+- 获取所有剧集的链接
 - 自动补全为绝对 URL
 
----
+### 🎬 自动处理 M3U8
 
-### 🎬 自动处理 M3U8（无需你手动下载 TS）
-使用 **yt-dlp** 全流程下载：
+使用强大的 `yt-dlp` 工具全流程处理下载：
 
-- 自动抓取 m3u8
+- 自动抓取 m3u8 地址
 - 自动下载 ts 分片
-- 自动合并为 mp4
-- 自动断点续传  
-- 已下载过则 **自动跳过**
+- 自动合并为 mp4 格式
+- 自动断点续传
+- 已下载过的剧集自动跳过
 
----
+### ⚡ 多进程加速下载
 
-### ⚡ 多进程加速
-使用 `multiprocessing.Pool` 全 CPU 并行下载。
+使用 `multiprocessing.Pool` 实现全 CPU 并行下载，大幅提升下载效率。
 
----
+### 🌐 代理池支持
 
-### 🖥️ GUI（PyQt5）
-简单易用：
+增强版实现包含代理池功能，可以从多个免费代理源获取代理，帮助绕过网站的反爬虫机制。
 
-- 输入 URL
-- 点击 “开始下载”
-- 窗口中实时打印日志
-
----
-
-### 📦 打包成 EXE
-一键生成独立 `gui_downloader.exe`
+## 🛠️ 安装依赖
 
 ```
-pyinstaller -F -w gui_downloader.py 
+pip install requests lxml yt-dlp playwright
 ```
 
-📁 项目结构
-```bash
-├── gui_downloader.py   # 主程序（PyQt5 GUI + 解析 + 下载）
-├── downloads/          # 下载目录（自动创建）
-└── README.md           # 项目说明
-```
+如需打包为 EXE，还需要安装：
 
-🛠️ 安装依赖
-```
-pip install requests lxml yt-dlp PyQt5
-```
-▶ 运行
-```
-python gui_downloader.py
-```
-📦 打包 EXE（Windows）
 ```
 pip install pyinstaller
-pyinstaller -F -w gui_downloader.py
 ```
 
-生成：
+## ▶️ 运行方式
+
+根据不同需求选择不同的脚本运行：
+
+1. 基础版本：
+   ```
+   python main.py
+   ```
+
+2. 多进程版本：
+   ```
+   python multiprocessing_main.py
+   ```
+
+3. 增强版多进程（含反爬措施）：
+   ```
+   python multiprocessing_main_2.0.py
+   ```
+
+4. 带代理池的增强版：
+   ```
+   python tv_spider_enhanced.py
+   ```
+
+5. 模块化版本：
+   ```
+   python sc/sc_main.py
+   ```
+
+## 📦 打包为 EXE（Windows）
+
 ```
-dist/gui_downloader.exe
+pyinstaller -F multiprocessing_main_2.0.py
 ```
-❤️ 贡献 & 建议
 
-欢迎提 Issue 或 PR，我可以协助你继续扩展：
+生成的可执行文件位于：
 
- 进度条（实时速度 MB/s）
+```
+dist/multiprocessing_main_2.0.exe
+```
 
- 支持代理
+## ❤️ 贡献与建议
 
- 自动下载整部剧所有剧集
+欢迎提交 Issue 或 PR，我可以协助您进一步扩展功能：
 
- 失败重试
+- [ ] 进度条（实时速度 MB/s）
+- [ ] 更完善的代理支持
+- [ ] 自动下载整部剧所有剧集
+- [ ] 失败重试机制
+- [ ] 文件名自动获取视频标题
+- [ ] 任务队列管理 + 暂停/继续功能
+- [ ] 图形界面版本
 
- 文件名自动获取视频标题
+## 📧 联系方式
 
- 任务队列 + 暂停/继续
-
-📧 联系
-
-如需定制功能，可随时联系。
+如需定制功能或其他问题，请随时联系。
